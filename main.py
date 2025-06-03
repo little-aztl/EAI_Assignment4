@@ -16,7 +16,8 @@ def detect_driller_pose(img, depth, camera_matrix, camera_pose, *args, **kwargs)
     Detects the pose of driller, you can include your policy in args
     """
     # implement the detection logic here
-    #
+    print(f'camera_matrix: {camera_matrix.shape} {camera_matrix.dtype}')
+    print(camera_matrix)
     model = kwargs.get('model')
     if model is None:
         raise ValueError("Model must be provided for detection.")

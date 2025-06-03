@@ -115,3 +115,25 @@ def rot_dist(r1: np.ndarray, r2: np.ndarray) -> float:
     """
     return np.arccos(np.clip((np.trace(r1 @ r2.T) - 1) / 2, -1, 1))
 
+def depth2pcd(depth: np.ndarray, intrinsics:np.ndarray) -> np.ndarray:
+    '''
+    depth: (H, W)
+    intrinsics: (3, 3)
+    '''
+    height, width = depth.shape
+    v, u = np.meshgrid(
+        range(height), range(width),
+        indexing='ij'
+    ) # (H, W), (H, W)
+    u, v = u.flatten(), v.flatten() # (HW,), (HW,)
+    depth_flat = depth.flatten() # (HW,)
+    valid = depth_flat > 0 # (N,)
+
+    u = u[valid] # (N,)
+    v = v[valid] # (N,)
+    depth_flat = depth_flat[valid] # (N,)
+
+    pixels = np.stack([u, v, np.ones_like(u)], axis=0) # (3, N)
+    rays = np.linalg.inv(intrinsics) @ pixels # (3, N)
+    points = rays * depth_flat[np.newaxis, :] # (3, N)
+    return points.T # (N, 3)
