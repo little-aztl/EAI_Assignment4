@@ -1,39 +1,23 @@
 import argparse
 from typing import Optional, Tuple, List
-from dataclasses import fields
 import numpy as np
 import cv2
 from pyapriltags import Detector
-from colorama import Fore, Back, Style
 
 from src.type import Grasp
-from src.config import Config
 from src.utils import to_pose
 from src.sim.wrapper_env import WrapperEnvConfig, WrapperEnv
 from src.sim.wrapper_env import get_grasps
 from src.test.load_test import load_test_data
-from src.obj_pose_est import estimate_obj_pose
 
 
-def detect_driller_pose(img, depth, camera_matrix, camera_pose, config:Config, *args, **kwargs):
+def detect_driller_pose(img, depth, camera_matrix, camera_pose, *args, **kwargs):
     """
     Detects the pose of driller, you can include your policy in args
     """
     # implement the detection logic here
-
-    # model = kwargs.get('model')
-    # if model is None:
-    #     raise ValueError("Model must be provided for detection.")
-
-    # driller_pose_in_camera = model.predict(img, depth, camera_matrix)
-
-    driller_pose_in_camera = estimate_obj_pose(
-        depth,
-        camera_matrix,
-        config
-    )
-    pose = camera_pose @ driller_pose_in_camera
-
+    #
+    pose = np.eye(4)
     return pose
 
 def detect_marker_pose(
@@ -44,97 +28,20 @@ def detect_marker_pose(
         tag_size: float = 0.12
     ) -> Optional[Tuple[np.ndarray, np.ndarray]]:
     # implement
-
-    # Convert image to grayscale if it is not already
-    if len(img.shape) == 3:
-        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    else:
-        img_gray = img
-
-    # Detect AprilTags in the image
-    detections = detector.detect(img_gray,
-        estimate_tag_pose=True,
-        camera_params=camera_params,
-        tag_size=tag_size
-    )
-    if not detections:
-        return None, None
-
-    # Assuming we take the first detection
-    detection = detections[0]
-    rot_marker_camera = detection.pose_R
-    trans_marker_camera = detection.pose_t
-
-    # Convert to world coordinates
-    T_marker_camera = np.eye(4)
-    T_marker_camera[:3, :3] = rot_marker_camera
-    T_marker_camera[:3, 3] = trans_marker_camera.flatten()
-    T_marker_world = camera_pose @ T_marker_camera
-    trans_marker_world = T_marker_world[:3, 3]
-    rot_marker_world = T_marker_world[:3, :3]
-
+    trans_marker_world = None
+    rot_marker_world = None
     return trans_marker_world, rot_marker_world
 
 def forward_quad_policy(pose, target_pose, *args, **kwargs):
     """ guide the quadruped to position where you drop the driller """
     # implement
-
-    # Default parameters for the controller
-    Kp_linear = kwargs.get('Kp_linear', 0.1)
-    Kp_angular = kwargs.get('Kp_angular', 0.1)
-
-    # Calculate the current and target positions and orientations
-    current_xy = pose[:2, 3]
-    target_xy = target_pose[:2, 3]
-    current_yaw = np.arctan2(pose[1, 0], pose[0, 0])
-    target_yaw = np.arctan2(target_pose[1, 0], target_pose[0, 0])
-
-    # Calculate the errors in position and orientation
-    linear_error = target_xy - current_xy
-    angular_error = target_yaw - current_yaw
-    current_yaw_sin = np.sin(current_yaw)
-    current_yaw_cos = np.cos(current_yaw)
-    dx_error = linear_error[0] * current_yaw_cos + linear_error[1] * current_yaw_sin
-    dy_error = -linear_error[0] * current_yaw_sin + linear_error[1] * current_yaw_cos
-
-    # Calculate the velocities
-    dx_velocity = Kp_linear * dx_error
-    dy_velocity = Kp_linear * dy_error
-    angular_velocity = Kp_angular * angular_error
-
-    action = np.array([dx_velocity, dy_velocity, angular_velocity])
-
+    action = np.array([0,0,0])
     return action
 
 def backward_quad_policy(pose, target_pose, *args, **kwargs):
     """ guide the quadruped back to its initial position """
     # implement
-
-    # Default parameters for the controller
-    Kp_linear = kwargs.get('Kp_linear', 0.1)
-    Kp_angular = kwargs.get('Kp_angular', 0.1)
-
-    # Calculate the current and target positions and orientations
-    current_xy = pose[:2, 3]
-    target_xy = target_pose[:2, 3]
-    current_yaw = np.arctan2(pose[1, 0], pose[0, 0])
-    target_yaw = np.arctan2(target_pose[1, 0], target_pose[0, 0])
-
-    # Calculate the errors in position and orientation
-    linear_error = target_xy - current_xy
-    angular_error = target_yaw - current_yaw
-    current_yaw_sin = np.sin(current_yaw)
-    current_yaw_cos = np.cos(current_yaw)
-    dx_error = linear_error[0] * current_yaw_cos + linear_error[1] * current_yaw_sin
-    dy_error = -linear_error[0] * current_yaw_sin + linear_error[1] * current_yaw_cos
-
-    # Calculate the velocities
-    dx_velocity = Kp_linear * dx_error
-    dy_velocity = Kp_linear * dy_error
-    angular_velocity = Kp_angular * angular_error
-
-    action = np.array([dx_velocity, dy_velocity, angular_velocity])
-
+    action = np.array([0,0,0])
     return action
 
 def plan_grasp(env: WrapperEnv, grasp: Grasp, grasp_config, *args, **kwargs) -> Optional[List[np.ndarray]]:
@@ -186,7 +93,7 @@ def execute_plan(env: WrapperEnv, plan):
 
 TESTING = True
 DISABLE_GRASP = False
-DISABLE_MOVE = True
+DISABLE_MOVE = False
 
 def main():
     parser = argparse.ArgumentParser(description="Launcher config - Physics")
@@ -196,19 +103,8 @@ def main():
     parser.add_argument("--headless", type=int, default=0)
     parser.add_argument("--reset_wait_steps", type=int, default=100)
     parser.add_argument("--test_id", type=int, default=0)
-    parser.add_argument('--config_path', type=str, default=None, help='Path to the config file')
 
     args = parser.parse_args()
-    config = (
-        Config()
-        if args.config_path is None
-        else Config.from_yaml(args.config_path)
-    )
-
-    for key, value in vars(args).items():
-        value = getattr(args, key)
-        if value is not None:
-            setattr(config, key, value)
 
     detector = Detector(
         families="tagStandard52h13",
@@ -302,9 +198,8 @@ def main():
     if not DISABLE_GRASP:
         obs_wrist = env.get_obs(camera_id=1) # wrist camera
         rgb, depth, camera_pose = obs_wrist.rgb, obs_wrist.depth, obs_wrist.camera_pose
-        # print(f"{Fore.YELLOW}camera pose: {camera_pose}{Style.RESET_ALL}")
         wrist_camera_matrix = env.sim.humanoid_robot_cfg.camera_cfg[1].intrinsics
-        driller_pose = detect_driller_pose(rgb, depth, wrist_camera_matrix, camera_pose, config)
+        driller_pose = detect_driller_pose(rgb, depth, wrist_camera_matrix, camera_pose)
         # metric judgement
         Metric['obj_pose'] = env.metric_obj_pose(driller_pose)
 
