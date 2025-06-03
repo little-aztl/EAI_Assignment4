@@ -17,7 +17,13 @@ def detect_driller_pose(img, depth, camera_matrix, camera_pose, *args, **kwargs)
     """
     # implement the detection logic here
     #
-    pose = np.eye(4)
+    model = kwargs.get('model')
+    if model is None:
+        raise ValueError("Model must be provided for detection.")
+
+    driller_pose_in_camera = model.predict(img, depth, camera_matrix)
+    pose = camera_pose @ driller_pose_in_camera
+
     return pose
 
 def detect_marker_pose(
@@ -28,20 +34,97 @@ def detect_marker_pose(
         tag_size: float = 0.12
     ) -> Optional[Tuple[np.ndarray, np.ndarray]]:
     # implement
-    trans_marker_world = None
-    rot_marker_world = None
+
+    # Convert image to grayscale if it is not already
+    if len(img.shape) == 3:
+        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    else:
+        img_gray = img
+
+    # Detect AprilTags in the image
+    detections = detector.detect(img_gray,
+        estimate_tag_pose=True,
+        camera_params=camera_params,
+        tag_size=tag_size
+    )
+    if not detections:
+        return None, None
+
+    # Assuming we take the first detection
+    detection = detections[0]
+    rot_marker_camera = detection.pose_R
+    trans_marker_camera = detection.pose_t
+
+    # Convert to world coordinates
+    T_marker_camera = np.eye(4)
+    T_marker_camera[:3, :3] = rot_marker_camera
+    T_marker_camera[:3, 3] = trans_marker_camera.flatten()
+    T_marker_world = camera_pose @ T_marker_camera
+    trans_marker_world = T_marker_world[:3, 3]
+    rot_marker_world = T_marker_world[:3, :3]
+
     return trans_marker_world, rot_marker_world
 
 def forward_quad_policy(pose, target_pose, *args, **kwargs):
     """ guide the quadruped to position where you drop the driller """
     # implement
-    action = np.array([0,0,0])
+
+    # Default parameters for the controller
+    Kp_linear = kwargs.get('Kp_linear', 0.1)
+    Kp_angular = kwargs.get('Kp_angular', 0.1)
+
+    # Calculate the current and target positions and orientations
+    current_xy = pose[:2, 3]
+    target_xy = target_pose[:2, 3]
+    current_yaw = np.arctan2(pose[1, 0], pose[0, 0])
+    target_yaw = np.arctan2(target_pose[1, 0], target_pose[0, 0])
+
+    # Calculate the errors in position and orientation
+    linear_error = target_xy - current_xy
+    angular_error = target_yaw - current_yaw
+    current_yaw_sin = np.sin(current_yaw)
+    current_yaw_cos = np.cos(current_yaw)
+    dx_error = linear_error[0] * current_yaw_cos + linear_error[1] * current_yaw_sin
+    dy_error = -linear_error[0] * current_yaw_sin + linear_error[1] * current_yaw_cos
+
+    # Calculate the velocities
+    dx_velocity = Kp_linear * dx_error
+    dy_velocity = Kp_linear * dy_error
+    angular_velocity = Kp_angular * angular_error
+
+    action = np.array([dx_velocity, dy_velocity, angular_velocity])
+
     return action
 
 def backward_quad_policy(pose, target_pose, *args, **kwargs):
     """ guide the quadruped back to its initial position """
     # implement
-    action = np.array([0,0,0])
+
+    # Default parameters for the controller
+    Kp_linear = kwargs.get('Kp_linear', 0.1)
+    Kp_angular = kwargs.get('Kp_angular', 0.1)
+
+    # Calculate the current and target positions and orientations
+    current_xy = pose[:2, 3]
+    target_xy = target_pose[:2, 3]
+    current_yaw = np.arctan2(pose[1, 0], pose[0, 0])
+    target_yaw = np.arctan2(target_pose[1, 0], target_pose[0, 0])
+
+    # Calculate the errors in position and orientation
+    linear_error = target_xy - current_xy
+    angular_error = target_yaw - current_yaw
+    current_yaw_sin = np.sin(current_yaw)
+    current_yaw_cos = np.cos(current_yaw)
+    dx_error = linear_error[0] * current_yaw_cos + linear_error[1] * current_yaw_sin
+    dy_error = -linear_error[0] * current_yaw_sin + linear_error[1] * current_yaw_cos
+
+    # Calculate the velocities
+    dx_velocity = Kp_linear * dx_error
+    dy_velocity = Kp_linear * dy_error
+    angular_velocity = Kp_angular * angular_error
+
+    action = np.array([dx_velocity, dy_velocity, angular_velocity])
+
     return action
 
 def plan_grasp(env: WrapperEnv, grasp: Grasp, grasp_config, *args, **kwargs) -> Optional[List[np.ndarray]]:
