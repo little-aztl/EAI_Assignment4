@@ -1,28 +1,37 @@
 import argparse
 from typing import Optional, Tuple, List
+from dataclasses import fields
 import numpy as np
 import cv2
 from pyapriltags import Detector
+from colorama import Fore, Back, Style
 
 from src.type import Grasp
+from src.config import Config
 from src.utils import to_pose
 from src.sim.wrapper_env import WrapperEnvConfig, WrapperEnv
 from src.sim.wrapper_env import get_grasps
 from src.test.load_test import load_test_data
+from src.obj_pose_est import estimate_obj_pose
 
 
-def detect_driller_pose(img, depth, camera_matrix, camera_pose, *args, **kwargs):
+def detect_driller_pose(img, depth, camera_matrix, camera_pose, config:Config, *args, **kwargs):
     """
     Detects the pose of driller, you can include your policy in args
     """
     # implement the detection logic here
-    print(f'camera_matrix: {camera_matrix.shape} {camera_matrix.dtype}')
-    print(camera_matrix)
-    model = kwargs.get('model')
-    if model is None:
-        raise ValueError("Model must be provided for detection.")
 
-    driller_pose_in_camera = model.predict(img, depth, camera_matrix)
+    # model = kwargs.get('model')
+    # if model is None:
+    #     raise ValueError("Model must be provided for detection.")
+
+    # driller_pose_in_camera = model.predict(img, depth, camera_matrix)
+
+    driller_pose_in_camera = estimate_obj_pose(
+        depth,
+        camera_matrix,
+        config
+    )
     pose = camera_pose @ driller_pose_in_camera
 
     return pose
@@ -187,8 +196,19 @@ def main():
     parser.add_argument("--headless", type=int, default=0)
     parser.add_argument("--reset_wait_steps", type=int, default=100)
     parser.add_argument("--test_id", type=int, default=0)
+    parser.add_argument('--config_path', type=str, default=None, help='Path to the config file')
 
     args = parser.parse_args()
+    config = (
+        Config()
+        if args.config_path is None
+        else Config.from_yaml(args.config_path)
+    )
+
+    for key, value in vars(args).items():
+        value = getattr(args, key)
+        if value is not None:
+            setattr(config, key, value)
 
     detector = Detector(
         families="tagStandard52h13",
@@ -282,8 +302,9 @@ def main():
     if not DISABLE_GRASP:
         obs_wrist = env.get_obs(camera_id=1) # wrist camera
         rgb, depth, camera_pose = obs_wrist.rgb, obs_wrist.depth, obs_wrist.camera_pose
+        # print(f"{Fore.YELLOW}camera pose: {camera_pose}{Style.RESET_ALL}")
         wrist_camera_matrix = env.sim.humanoid_robot_cfg.camera_cfg[1].intrinsics
-        driller_pose = detect_driller_pose(rgb, depth, wrist_camera_matrix, camera_pose[:3, 3])
+        driller_pose = detect_driller_pose(rgb, depth, wrist_camera_matrix, camera_pose, config)
         # metric judgement
         Metric['obj_pose'] = env.metric_obj_pose(driller_pose)
 
