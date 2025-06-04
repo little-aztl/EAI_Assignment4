@@ -55,7 +55,7 @@ class WrapperEnv:
         self.config.table_pose = table_pose
         self.config.table_size = table_size
         self.config.obj_pose = obj_pose
-    
+
     def set_quad_reset_pos(self, quad_reset_pos: np.ndarray):
         """Set the quad load position."""
         self.config.quad_reset_pos = quad_reset_pos
@@ -98,7 +98,7 @@ class WrapperEnv:
             obj_init_trans = np.array([0.5, 0.3, 0.82])
             obj_init_trans[:2] += np.random.uniform(-0.02, 0.02, 2) * 0
             obj_pose = to_pose(obj_init_trans, rand_rot_mat())
-        
+
         self.obj = get_obj(self.obj_name, obj_pose)
         scene.obj_list.append(self.obj)
         for o in scene.obj_list:
@@ -119,30 +119,30 @@ class WrapperEnv:
         self.sim._driller_valid_count = 0
 
         self.sim.reset(humanoid_head_qpos, humanoid_init_qpos, self.quad_robot_cfg.joint_init_qpos)
-        
+
         self.quad_info, self.quad_obs = self.quad_sim.reset(
             base_pose=self.sim.default_quad_pose,
             qpos=self.sim.quad_robot_cfg.joint_init_qpos,
         )
-        
+
         if reset_wait_steps is None:
             reset_wait_steps = self.config.reset_wait_steps
-        
+
         for _ in range(reset_wait_steps):
             self.sim.step_reset()
-        
+
         self._init_container_pose = self.get_container_pose()
 
     def get_obs(self, camera_id: int = 1) -> Obs:
         """Get the observation from the simulation, camera_id = 0 for head camera, camera_id = 1 for wrist camera."""
-        init_qpos = self.humanoid_robot_cfg.joint_init_qpos.copy()
+        qpos = self.get_state()
         if camera_id == 1:
-            cam_trans, cam_rot = self.humanoid_robot_model.fk_camera(init_qpos, camera_id)
+            cam_trans, cam_rot = self.humanoid_robot_model.fk_camera(qpos, camera_id)
         elif camera_id == 0:
             cam_trans, cam_rot = self.humanoid_robot_model.fk_camera(self.sim.humanoid_head_qpos, camera_id)
         else:
             raise NotImplementedError
-        
+
         cam_pose = to_pose(cam_trans, cam_rot)
         render_cfg = MjRenderConfig.from_intrinsics_extrinsics(
             self.humanoid_robot_cfg.camera_cfg[camera_id].height,
@@ -159,9 +159,9 @@ class WrapperEnv:
         )
 
         return obs
-    
+
     def get_state(self) -> Dict:
-        humanoid_qpos = self.sim.mj_data.qpos[self.sim.humanoid_actuator_ids]
+        humanoid_qpos = self.sim.mj_data.qpos[self.sim.humanoid_joint_ids]
         return humanoid_qpos
 
     def step_env(
@@ -179,12 +179,12 @@ class WrapperEnv:
         gripper_open: 1 for open, 0 for close
         """
         assert not (humanoid_action is not None and gripper_open is not None), "Cannot specify both humanoid_action and gripper_open at the same time."
-        
+
         if quad_command is None:
             quad_command = np.array([0.0, 0.0, 0.0])
         else:
             assert len(quad_command) == 3
-        
+
         self.quad_info["command"] = quad_command.copy()
         onnx_input = {"obs": self.quad_obs["state"].reshape(1, -1).astype(np.float32)}
         quad_action = self.quad_policy.run(self.quad_output_names, onnx_input)[0][0]
@@ -218,12 +218,12 @@ class WrapperEnv:
             if self.detect_drop_precision():
                 self.sim._driller_valid_count += 1
                 if self.sim._driller_valid_count > 8:
-                    self.sim._fix_driller = True  
+                    self.sim._fix_driller = True
                     driller_pose = self.get_driller_pose().copy()
                     driller_pose[2, 3] += 0.005 # raise the driller a bit
                     quad_pose = self.get_quad_pose()
                     self.sim._fix_pose_quad_to_driller = np.linalg.inv(quad_pose) @ driller_pose
-                    
+
 
 
     def debug_save_obs(self, obs: Obs, data_dir=None):
@@ -246,7 +246,7 @@ class WrapperEnv:
         trans = pose_array[:3].copy()
         rot = quat2mat(pose_array[3:])
         return to_pose(trans, rot)
-    
+
     def get_container_pose(self) -> np.ndarray:
         pose_array = self.sim._debug_get_quad_pose()
         trans = np.asanyarray(pose_array[:3].copy())
@@ -271,7 +271,7 @@ class WrapperEnv:
         if dist_diff < 0.025 and angle_diff < 0.25:
             return True
         return False
-    
+
     def detect_drop_precision(self):
         """
         judge the drop precision
@@ -286,12 +286,12 @@ class WrapperEnv:
         if np.abs(driller_trans_container[0]) < container_size[0] / 2 and \
             np.abs(driller_trans_container[1]) < container_size[1] / 2 and \
             np.abs(driller_trans_container[2]) < container_size[2] / 2:
-            return True   
+            return True
         return False
-    
+
     def metric_drop_precision(self):
         return self.sim._fix_driller
-    
+
     def metric_quad_return(self):
         """
         judge if the quadruped's box returned to the original position
@@ -304,7 +304,7 @@ class WrapperEnv:
         if dist_xy < 0.1:
             return True
         return False
-    
+
     def close(self):
         """close the simulation."""
         self.sim.close()
@@ -331,7 +331,7 @@ def get_scene_table(table_pose:np.ndarray, table_size:np.ndarray) -> Scene:
         pose=pose_table_leg1,
         size=size_table_leg,
         fixed_body=True,
-    )    
+    )
     # table_leg2 = Box(
     #     name="table_leg2",
     #     pose=pose_table_leg2,
@@ -351,7 +351,7 @@ def get_scene_table(table_pose:np.ndarray, table_size:np.ndarray) -> Scene:
     size_table_bottom3 = table_size.copy()
     size_table_bottom3[0] = pose_table_bottom2[0,3] - pose_table_bottom1[0,3] - 0.08
     size_table_bottom3[1] = 0.08
-    size_table_bottom3[2] = 0.02 
+    size_table_bottom3[2] = 0.02
 
     table_bottom1 = Box(
         name="table_bottom1",
@@ -371,7 +371,7 @@ def get_scene_table(table_pose:np.ndarray, table_size:np.ndarray) -> Scene:
         size=size_table_bottom3,
         fixed_body=True,
     )
-    
+
     scene = Scene(obj_list=[table, table_leg1, table_bottom1, table_bottom2, table_bottom3])
     return scene
 
