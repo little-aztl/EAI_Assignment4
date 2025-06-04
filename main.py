@@ -20,6 +20,8 @@ def detect_driller_pose(img, depth, camera_matrix, camera_pose, config:Config, *
     Detects the pose of driller, you can include your policy in args
     """
     # implement the detection logic here
+    #
+    pose = np.eye(4)
 
     # model = kwargs.get('model')
     # if model is None:
