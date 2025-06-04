@@ -191,11 +191,11 @@ def plan_move_qpos(begin_qpos, end_qpos, steps=50) -> np.ndarray:
     delta_qpos = (end_qpos - begin_qpos) / steps
     cur_qpos = begin_qpos.copy()
     traj = []
-    
+
     for _ in range(steps):
         cur_qpos += delta_qpos
         traj.append(cur_qpos.copy())
-    
+
     return np.array(traj)
 def execute_plan(env: WrapperEnv, plan):
     """Execute the plan in the environment."""
@@ -257,13 +257,13 @@ def main():
         'drop_precision': False,
         'quad_return': False,
     }
-    
+
     head_init_qpos = np.array([0.0,0.0]) # you can adjust the head init qpos to find the driller
 
     env.step_env(humanoid_head_qpos=head_init_qpos)
-    
+
     observing_qpos = humanoid_init_qpos + np.array([0.01,0,0,0,0,0,0]) # you can customize observing qpos to get wrist obs
-    init_plan = plan_move_qpos(env, humanoid_init_qpos, observing_qpos, steps = 20)
+    init_plan = plan_move_qpos(humanoid_init_qpos, observing_qpos, steps = 20)
     execute_plan(env, init_plan)
 
 
@@ -276,14 +276,14 @@ def main():
 
         # implement this to guide the quadruped to target dropping position
         #
-        target_container_pose = [] 
+        target_container_pose = []
         def is_close(pose1, pose2, threshold): return True
         for step in range(forward_steps):
             if step % steps_per_camera_shot == 0:
                 obs_head = env.get_obs(camera_id=0) # head camera
                 trans_marker_world, rot_marker_world = detect_marker_pose(
-                    detector, 
-                    obs_head.rgb, 
+                    detector,
+                    obs_head.rgb,
                     head_camera_params,
                     obs_head.camera_pose,
                     tag_size=0.12
@@ -313,7 +313,7 @@ def main():
         obs_wrist = env.get_obs(camera_id=1) # wrist camera
         rgb, depth, camera_pose = obs_wrist.rgb, obs_wrist.depth, obs_wrist.camera_pose
         wrist_camera_matrix = env.sim.humanoid_robot_cfg.camera_cfg[1].intrinsics
-        driller_pose = detect_driller_pose(rgb, depth, wrist_camera_matrix, camera_pose[:3, 3])
+        driller_pose = detect_driller_pose(rgb, depth, wrist_camera_matrix, camera_pose)
         # metric judgement
         Metric['obj_pose'] = env.metric_obj_pose(driller_pose)
 
@@ -321,14 +321,14 @@ def main():
     # --------------------------------------step 3: plan grasp and lift------------------------------------------------------
     if not DISABLE_GRASP:
         obj_pose = driller_pose.copy()
-        grasps = get_grasps(args.obj) 
+        grasps = get_grasps(args.obj)
         grasps0_n = Grasp(grasps[0].trans, grasps[0].rot @ np.diag([-1,-1,1]), grasps[0].width)
         grasps2_n = Grasp(grasps[2].trans, grasps[2].rot @ np.diag([-1,-1,1]), grasps[2].width)
         valid_grasps = [grasps[0], grasps0_n, grasps[2], grasps2_n] # we have provided some grasps, you can choose to use them or yours
-        grasp_config = dict( 
+        grasp_config = dict(
             reach_steps=0,
             lift_steps=0,
-            delta_dist=0, 
+            delta_dist=0,
         ) # the grasping design in assignment 2, you can choose to use it or design yours
 
         for obj_frame_grasp in valid_grasps:
@@ -361,7 +361,7 @@ def main():
         #
         move_plan = plan_move(
             env=env,
-        ) 
+        )
         execute_plan(env, move_plan)
         open_gripper(env)
 
@@ -378,13 +378,13 @@ def main():
             env.step_env(
                 quad_command=quad_command
             )
-        
+
 
     # test the metrics
     Metric["drop_precision"] = Metric["drop_precision"] or env.metric_drop_precision()
     Metric["quad_return"] = Metric["quad_return"] or env.metric_quad_return()
 
-    print("Metrics:", Metric) 
+    print("Metrics:", Metric)
 
     print("Simulation completed.")
     env.close()

@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field  # type: ignore
+from typing import Dict, List, Any
 import numpy as np
 import yaml
 
@@ -6,10 +7,32 @@ import yaml
 # if you add some non-hashable types like list or dict, you need to use field
 # like xxx: list = field(default_factory=lambda: [1, 2, 3])
 
+DEFAULT_MODEL_HYPERPARAMS = {
+    "est_pose": {
+        "encoder_hidden_dims": [64, 128, 256],
+        'activation': 'ReLU',
+        'decoder_hidden_dims': [128],
+        'loss': {
+            'rotation_weight': 0.5,
+            'translation_weight': 0.5,
+        }
+    },
+    "est_coord": {
+        "light_encoder_hidden_dim": 64,
+        "encoder_hidden_dims": [128, 1024],
+        'activation': 'ReLU',
+        'decoder_hidden_dims': [512, 256],
+        'RANSAC': {
+            'inlier_thresh': 0.010,
+            'max_iter': 5000,
+            'n_samples': 10
+        }
+    }
+}
 
 @dataclass
 class Config:
-    model_type: str = None
+    model_type: str = 'est_coord'
     """can be est_pose or est_coord"""
     exp_name: str = "debug"
     """if exp_name is debug, it won't be logged in wandb"""
@@ -43,6 +66,14 @@ class Config:
     """the device to use for training, you can use cuda:0 if you have a gpu"""
     point_num: int = 1024
     """number of points sampled from the full observation point cloud"""
+
+    checkpoint: str = "checkpoints/est_coord/checkpoint_10000.pth"
+
+    model_hyperparams: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        if not self.model_hyperparams:
+            self.model_hyperparams = DEFAULT_MODEL_HYPERPARAMS.get(self.model_type, {})
 
     @classmethod
     def from_yaml(cls, path: str) -> "Config":
