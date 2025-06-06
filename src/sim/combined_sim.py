@@ -185,7 +185,7 @@ class CombinedSim:
 
         if not self.headless:
             self.viewer.sync()
-    
+
     def step_reset(self):
         self.mj_data.ctrl = self.default_ctrl.copy()
         for _ in range(int(self.ctrl_dt / self.sim_dt)):
@@ -197,7 +197,7 @@ class CombinedSim:
     def __set_driller_pose(self, driller_pose):
         self.physics.named.data.qpos['//unnamed_joint_1'] = driller_pose
         self.physics.forward()
-    
+
     def __update_driller_pose(self):
         trans_quad = self.mj_data.qpos[:3]
         quat_quad = self.mj_data.qpos[3:7]
@@ -216,14 +216,14 @@ class CombinedSim:
         if humanoid_head_qpos is not None: self.humanoid_head_qpos = humanoid_head_qpos
         if humanoid_arm_action is None: humanoid_arm_action = self.cached_humanoid_action.copy()
         else: self.cached_humanoid_action = humanoid_arm_action.copy()
-        
+
         self.mj_data.ctrl[self.humanoid_actuator_ids] = humanoid_arm_action
         steps = int(self.ctrl_dt/self.sim_dt)
         assert steps==len(quad_poses)
         for i in range(steps):
             quad_pose = quad_poses[i]
             quad_qpos = quad_qposes[i]
-            
+
             self.mj_data.qpos[:7] = quad_pose.copy()
             self.mj_data.qpos[7:self.qpos_humanoid_begin] = quad_qpos.copy()
             self.mj_data.qvel[:self.qpos_humanoid_begin-1] = 0.0
@@ -310,7 +310,7 @@ class CombinedSim:
         with temp_work_dir(robot_mjcf):
             robot_xml = mjcf.from_file(robot_mjcf)
             self.mjcf_root.attach(robot_xml)
-    
+
     def _load_robot_quad(self, robot_mjcf: str, pos = [1,0,0.445]):
         robot_mjcf = os.path.abspath(robot_mjcf)
         # print(robot_mjcf)
@@ -382,17 +382,17 @@ class CombinedSim:
         pos = self.mj_data.xpos[body_id]
         rot = self.mj_data.xmat[body_id].reshape(3, 3)
         return pos, rot
-    
+
     def _debug_get_driller_pose(self):
         return self.__get_driller_pose()
-    
+
     def _debug_get_body_pose(self, body_name):
         return self.__get_body_pose(body_name)
-    
+
     def _debug_get_quad_pose(self):
         pose_array = self.mj_data.qpos[:7].copy()
         return pose_array
-        
+
     def debug_vis_pose(self, pose):
         self.mj_data.mocap_pos[0] = pose[:3, 3]
         self.mj_data.mocap_quat[0] = mat2quat(pose[:3, :3])

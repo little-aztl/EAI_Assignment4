@@ -17,11 +17,19 @@ def detect_driller_pose(img, depth, camera_matrix, camera_pose, *args, **kwargs)
     """
     # implement the detection logic here
     #
-    model = kwargs.get('model')
-    if model is None:
-        raise ValueError("Model must be provided for detection.")
-    
-    driller_pose_in_camera = model.predict(img, depth, camera_matrix)
+    pose = np.eye(4)
+
+    # model = kwargs.get('model')
+    # if model is None:
+    #     raise ValueError("Model must be provided for detection.")
+
+    # driller_pose_in_camera = model.predict(img, depth, camera_matrix)
+
+    driller_pose_in_camera = estimate_obj_pose(
+        depth,
+        camera_matrix,
+        config
+    )
     pose = camera_pose @ driller_pose_in_camera
 
     return pose
