@@ -16,6 +16,7 @@ from src.sim.cfg import CombinedSimConfig, MjRenderConfig
 import onnxruntime as rt
 from src.quad_highlevel.deploy.sim.quad_sim import PlayGo2LocoEnv
 import src.quad_highlevel.deploy.constants as quad_consts
+from ikpy.chain import Chain
 
 
 @dataclass
@@ -48,14 +49,58 @@ class WrapperEnv:
         self.humanoid_robot_model = RobotModel(self.humanoid_robot_cfg)
         self.quad_robot_cfg = get_quad_cfg()
         self.obj_name = config.obj_name
+        self._init_ikpy_chain()
 
+    def _init_ikpy_chain(self):
+        """Initialize the IKPy chain for the humanoid robot."""
+        cfg = self.humanoid_robot_cfg
+
+        self.ikpy_chain = Chain.from_urdf_file(
+            urdf_file=cfg.urdf_path,
+            base_elements=["left_arm_base_link"],
+            last_link_vector=[-0.283704, 0, 0],
+            active_links_mask=[False, True, True, True, True, True, True, True]
+        )
+
+        left_arm_indices = []
+        for i, name in enumerate(cfg.joint_names):
+            if name.startswith("left_arm_joint"):
+                left_arm_indices.append(i)
+        self.left_arm_joint_ids = np.array(left_arm_indices, dtype=np.int32)
+
+    def solve_ik(
+        self,
+        target_pose: np.ndarray,
+        base_qpos: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Solve the inverse kinematics for the humanoid robot to reach the target pose.
+        """
+
+        base_qpos_left_arm = base_qpos[self.left_arm_joint_ids]
+
+        # Solve the IK using IKPy.
+        ik_solution = self.ikpy_chain.inverse_kinematics_frame(
+            target=target_pose,
+            initial_position=base_qpos_left_arm,
+        )
+
+        # Check if the IK solution is valid.
+        if ik_solution is None or np.isnan(ik_solution).any():
+            return None
+        # Ensure the solution is in the correct format.
+        ik_solution = np.array(ik_solution, dtype=np.float32)
+        new_qpos = base_qpos.copy()
+        new_qpos[self.left_arm_joint_ids] = ik_solution
+
+        return new_qpos
 
     def set_table_obj_config(self, table_pose: np.ndarray, table_size: np.ndarray, obj_pose: np.ndarray):
         """Set the table pose and size and object pose."""
         self.config.table_pose = table_pose
         self.config.table_size = table_size
         self.config.obj_pose = obj_pose
-
+    
     def set_quad_reset_pos(self, quad_reset_pos: np.ndarray):
         """Set the quad load position."""
         self.config.quad_reset_pos = quad_reset_pos
@@ -98,7 +143,7 @@ class WrapperEnv:
             obj_init_trans = np.array([0.5, 0.3, 0.82])
             obj_init_trans[:2] += np.random.uniform(-0.02, 0.02, 2) * 0
             obj_pose = to_pose(obj_init_trans, rand_rot_mat())
-
+        
         self.obj = get_obj(self.obj_name, obj_pose)
         scene.obj_list.append(self.obj)
         for o in scene.obj_list:
@@ -119,18 +164,18 @@ class WrapperEnv:
         self.sim._driller_valid_count = 0
 
         self.sim.reset(humanoid_head_qpos, humanoid_init_qpos, self.quad_robot_cfg.joint_init_qpos)
-
+        
         self.quad_info, self.quad_obs = self.quad_sim.reset(
             base_pose=self.sim.default_quad_pose,
             qpos=self.sim.quad_robot_cfg.joint_init_qpos,
         )
-
+        
         if reset_wait_steps is None:
             reset_wait_steps = self.config.reset_wait_steps
-
+        
         for _ in range(reset_wait_steps):
             self.sim.step_reset()
-
+        
         self._init_container_pose = self.get_container_pose()
 
     def get_obs(self, camera_id: int = 1) -> Obs:
@@ -142,15 +187,15 @@ class WrapperEnv:
             cam_trans, cam_rot = self.humanoid_robot_model.fk_camera(self.sim.humanoid_head_qpos, camera_id)
         else:
             raise NotImplementedError
-
+        
         cam_pose = to_pose(cam_trans, cam_rot)
-        render_cfg = MjRenderConfig.from_intrinsics_extrinsics(
-            self.humanoid_robot_cfg.camera_cfg[camera_id].height,
-            self.humanoid_robot_cfg.camera_cfg[camera_id].width,
-            self.humanoid_robot_cfg.camera_cfg[camera_id].intrinsics,
-            cam_pose.copy(),
-        )
-        x = self.sim.render(render_cfg)
+        # render_cfg = MjRenderConfig.from_intrinsics_extrinsics(
+        #     self.humanoid_robot_cfg.camera_cfg[camera_id].height,
+        #     self.humanoid_robot_cfg.camera_cfg[camera_id].width,
+        #     self.humanoid_robot_cfg.camera_cfg[camera_id].intrinsics,
+        #     cam_pose.copy(),
+        # )
+        x = self.sim.render(camera_id=camera_id, camera_pose=cam_pose)
 
         obs = Obs(
             rgb=x["rgb"],
@@ -159,7 +204,7 @@ class WrapperEnv:
         )
 
         return obs
-
+    
     def get_state(self) -> Dict:
         humanoid_qpos = self.sim.mj_data.qpos[self.sim.humanoid_joint_ids]
         return humanoid_qpos
@@ -179,12 +224,12 @@ class WrapperEnv:
         gripper_open: 1 for open, 0 for close
         """
         assert not (humanoid_action is not None and gripper_open is not None), "Cannot specify both humanoid_action and gripper_open at the same time."
-
+        
         if quad_command is None:
             quad_command = np.array([0.0, 0.0, 0.0])
         else:
             assert len(quad_command) == 3
-
+        
         self.quad_info["command"] = quad_command.copy()
         onnx_input = {"obs": self.quad_obs["state"].reshape(1, -1).astype(np.float32)}
         quad_action = self.quad_policy.run(self.quad_output_names, onnx_input)[0][0]
@@ -218,12 +263,12 @@ class WrapperEnv:
             if self.detect_drop_precision():
                 self.sim._driller_valid_count += 1
                 if self.sim._driller_valid_count > 8:
-                    self.sim._fix_driller = True
+                    self.sim._fix_driller = True  
                     driller_pose = self.get_driller_pose().copy()
                     driller_pose[2, 3] += 0.005 # raise the driller a bit
                     quad_pose = self.get_quad_pose()
                     self.sim._fix_pose_quad_to_driller = np.linalg.inv(quad_pose) @ driller_pose
-
+                    
 
 
     def debug_save_obs(self, obs: Obs, data_dir=None):
@@ -246,7 +291,7 @@ class WrapperEnv:
         trans = pose_array[:3].copy()
         rot = quat2mat(pose_array[3:])
         return to_pose(trans, rot)
-
+    
     def get_container_pose(self) -> np.ndarray:
         pose_array = self.sim._debug_get_quad_pose()
         trans = np.asanyarray(pose_array[:3].copy())
@@ -271,7 +316,7 @@ class WrapperEnv:
         if dist_diff < 0.025 and angle_diff < 0.25:
             return True
         return False
-
+    
     def detect_drop_precision(self):
         """
         judge the drop precision
@@ -286,12 +331,12 @@ class WrapperEnv:
         if np.abs(driller_trans_container[0]) < container_size[0] / 2 and \
             np.abs(driller_trans_container[1]) < container_size[1] / 2 and \
             np.abs(driller_trans_container[2]) < container_size[2] / 2:
-            return True
+            return True   
         return False
-
+    
     def metric_drop_precision(self):
         return self.sim._fix_driller
-
+    
     def metric_quad_return(self):
         """
         judge if the quadruped's box returned to the original position
@@ -304,7 +349,7 @@ class WrapperEnv:
         if dist_xy < 0.1:
             return True
         return False
-
+    
     def close(self):
         """close the simulation."""
         self.sim.close()
@@ -331,7 +376,7 @@ def get_scene_table(table_pose:np.ndarray, table_size:np.ndarray) -> Scene:
         pose=pose_table_leg1,
         size=size_table_leg,
         fixed_body=True,
-    )
+    )    
     # table_leg2 = Box(
     #     name="table_leg2",
     #     pose=pose_table_leg2,
@@ -351,7 +396,7 @@ def get_scene_table(table_pose:np.ndarray, table_size:np.ndarray) -> Scene:
     size_table_bottom3 = table_size.copy()
     size_table_bottom3[0] = pose_table_bottom2[0,3] - pose_table_bottom1[0,3] - 0.08
     size_table_bottom3[1] = 0.08
-    size_table_bottom3[2] = 0.02
+    size_table_bottom3[2] = 0.02 
 
     table_bottom1 = Box(
         name="table_bottom1",
@@ -371,7 +416,7 @@ def get_scene_table(table_pose:np.ndarray, table_size:np.ndarray) -> Scene:
         size=size_table_bottom3,
         fixed_body=True,
     )
-
+    
     scene = Scene(obj_list=[table, table_leg1, table_bottom1, table_bottom2, table_bottom3])
     return scene
 
