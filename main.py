@@ -148,18 +148,44 @@ def plan_grasp(env: WrapperEnv, grasp: Grasp, grasp_config, *args, **kwargs) -> 
 
     traj_reach = []
     traj_lift = []
-    succ = False
-    if not succ: return None
 
+    T_grasp = np.eye(4)
+    T_grasp[:3, :3] = grasp.rot
+    T_grasp[:3, 3] = grasp.trans
+
+    T_lift = T_grasp.copy()
+    T_lift[:3, 3][2] += delta_dist  # Lift the gripper by delta_dist in the z direction
+
+    end_qpos_lift = env.solve_ik(T_lift, env.sim.humanoid_robot_cfg.joint_init_qpos)
+    if end_qpos_lift is None:
+        print("Failed to solve IK for the lift position.")
+        return None
+    end_qpos_grasp = env.solve_ik(T_grasp, end_qpos_lift)
+    if end_qpos_grasp is None:
+        print("Failed to solve IK for the grasp position.")
+        return None
+    
+    # Plan the reach trajectory
+    traj_reach = plan_move_qpos(end_qpos_lift, end_qpos_grasp, steps=reach_steps)
+    # Plan the lift trajectory
+    traj_lift = plan_move_qpos(end_qpos_grasp, end_qpos_lift, steps=lift_steps)
+    
     return [np.array(traj_reach), np.array(traj_lift)]
 
 def plan_move(env: WrapperEnv, begin_qpos, begin_trans, begin_rot, end_trans, end_rot, steps = 50, *args, **kwargs):
     """Plan a trajectory moving the driller from table to dropping position"""
     # implement
-    traj = []
+    T_end = np.eye(4)
+    T_end[:3, :3] = end_rot
+    T_end[:3, 3] = end_trans
 
-    succ = False
-    if not succ: return None
+    end_qpos = env.solve_ik(T_end, begin_qpos)
+    if end_qpos is None:
+        print("Failed to solve IK for the end position.")
+        return None
+    
+    traj = plan_move_qpos(begin_qpos, end_qpos, steps=steps)
+
     return traj
 
 def open_gripper(env: WrapperEnv, steps = 10):
