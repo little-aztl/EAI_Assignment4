@@ -9,7 +9,7 @@ from src.utils import to_pose
 from src.sim.wrapper_env import WrapperEnvConfig, WrapperEnv
 from src.sim.wrapper_env import get_grasps
 from src.test.load_test import load_test_data
-
+from src.obj_pose_est import estimate_obj_pose
 
 def detect_driller_pose(img, depth, camera_matrix, camera_pose, *args, **kwargs):
     """
@@ -90,6 +90,8 @@ def forward_quad_policy(pose, target_pose, *args, **kwargs):
     # Calculate the errors in position and orientation
     linear_error = target_xy - current_xy
     angular_error = target_yaw - current_yaw
+    # normalize the yaw error to be within [-pi, pi]
+    angular_error = (angular_error + np.pi) % (2 * np.pi) - np.pi
     current_yaw_sin = np.sin(current_yaw)
     current_yaw_cos = np.cos(current_yaw)
     dx_error = linear_error[0] * current_yaw_cos + linear_error[1] * current_yaw_sin
@@ -121,6 +123,8 @@ def backward_quad_policy(pose, target_pose, *args, **kwargs):
     # Calculate the errors in position and orientation
     linear_error = target_xy - current_xy
     angular_error = target_yaw - current_yaw
+    # normalize the yaw error to be within [-pi, pi]
+    angular_error = (angular_error + np.pi) % (2 * np.pi) - np.pi
     current_yaw_sin = np.sin(current_yaw)
     current_yaw_cos = np.cos(current_yaw)
     dx_error = linear_error[0] * current_yaw_cos + linear_error[1] * current_yaw_sin

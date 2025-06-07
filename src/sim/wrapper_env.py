@@ -54,12 +54,13 @@ class WrapperEnv:
     def _init_ikpy_chain(self):
         """Initialize the IKPy chain for the humanoid robot."""
         cfg = self.humanoid_robot_cfg
+        
 
         self.ikpy_chain = Chain.from_urdf_file(
-            urdf_file=cfg.urdf_path,
+            urdf_file=cfg.path_urdf,
             base_elements=["left_arm_base_link"],
             last_link_vector=[-0.283704, 0, 0],
-            active_links_mask=[False, True, True, True, True, True, True, True]
+            active_links_mask=[False, True, True, True, True, True,True, True, False, False]
         )
 
         left_arm_indices = []
@@ -83,6 +84,7 @@ class WrapperEnv:
         ik_solution = self.ikpy_chain.inverse_kinematics_frame(
             target=target_pose,
             initial_position=base_qpos_left_arm,
+            orientation_mode="all",
         )
 
         # Check if the IK solution is valid.
