@@ -1,5 +1,5 @@
 batch_size: 48
-checkpoint: null
+checkpoint: checkpoints/est_pose/checkpoint_20000.pth
 device: cpu
 exp_name: est_pose_for_final
 learning_rate: 0.001

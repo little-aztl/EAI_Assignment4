@@ -22,17 +22,17 @@ DEFAULT_MODEL_HYPERPARAMS = {
         "encoder_hidden_dims": [128, 1024],
         'activation': 'ReLU',
         'decoder_hidden_dims': [512, 256],
-        'RANSAC': {
+        "RANSAC": {
             'inlier_thresh': 0.010,
-            'max_iter': 5000,
-            'n_samples': 10
+            "max_iter": 1000,
+            "n_samples": 4,
         }
     }
 }
 
 @dataclass
 class Config:
-    model_type: str = 'est_coord'
+    model_type: str = None
     """can be est_pose or est_coord"""
     exp_name: str = "debug"
     """if exp_name is debug, it won't be logged in wandb"""
@@ -66,8 +66,6 @@ class Config:
     """the device to use for training, you can use cuda:0 if you have a gpu"""
     point_num: int = 1024
     """number of points sampled from the full observation point cloud"""
-
-    checkpoint: str = "checkpoints/est_coord/checkpoint_10000.pth"
 
     model_hyperparams: Dict[str, Any] = field(default_factory=dict)
 

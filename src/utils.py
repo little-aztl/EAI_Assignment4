@@ -2,6 +2,7 @@ import os
 import random
 from typing import Optional
 import numpy as np
+import torch
 
 from transforms3d.quaternions import quat2mat
 
@@ -135,3 +136,7 @@ def execute_plan(env, plan):
         env.step_env(
             humanoid_action=plan[step],
         )
+
+def safe_acos(x: torch.Tensor, eps=1e-7) -> torch.Tensor:
+    x_clamped = torch.clamp(x, -1.0 + eps, 1.0 - eps)
+    return torch.acos(x_clamped)

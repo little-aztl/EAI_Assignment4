@@ -33,6 +33,7 @@ def detect_driller_pose(img, depth, camera_matrix, camera_pose, config:Config, *
     driller_pose_in_camera = estimate_obj_pose(
         depth,
         camera_matrix,
+        camera_pose,
         config
     )
     pose = camera_pose @ driller_pose_in_camera
@@ -240,7 +241,7 @@ def main():
 
     env.step_env(humanoid_head_qpos=head_init_qpos)
 
-    observing_qpos = humanoid_init_qpos + np.array([0.01,0,0,0,0,0,0]) # you can customize observing qpos to get wrist obs
+    observing_qpos = humanoid_init_qpos + np.array([-0.4,0,0.8,0,0,0.10,-0.12]) # you can customize observing qpos to get wrist obs
     init_plan = plan_move_qpos(humanoid_init_qpos, observing_qpos, steps = 20)
     execute_plan(env, init_plan)
 
@@ -295,6 +296,7 @@ def main():
         driller_pose = detect_driller_pose(rgb, depth, wrist_camera_matrix, camera_pose, config)
         # metric judgement
         Metric['obj_pose'] = env.metric_obj_pose(driller_pose)
+        print(f"Metric['obj_pose]: {Metric['obj_pose']}")
 
 
     # --------------------------------------step 3: plan grasp and lift------------------------------------------------------
