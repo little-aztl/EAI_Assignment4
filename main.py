@@ -184,7 +184,7 @@ def main():
     parser.add_argument("--headless", type=int, default=0)
     parser.add_argument("--reset_wait_steps", type=int, default=100)
     parser.add_argument("--test_id", type=int, default=0)
-    parser.add_argument('--config_path', type=str, default=None, help='Path to the config file')
+    parser.add_argument('--config_path', type=str, default="configs/est_pose.yaml", help='Path to the config file')
 
     args = parser.parse_args()
     config = (
