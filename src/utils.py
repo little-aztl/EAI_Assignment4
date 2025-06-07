@@ -8,6 +8,9 @@ from transforms3d.quaternions import quat2mat
 from .type import Grasp
 from .constants import PC_MAX, PC_MIN
 
+def load_npy(file_path: str) -> np.ndarray:
+    return np.load(file_path)
+
 def to_pose(
     trans: Optional[np.ndarray] = None, rot: Optional[np.ndarray] = None
 ) -> np.ndarray:
@@ -115,25 +118,20 @@ def rot_dist(r1: np.ndarray, r2: np.ndarray) -> float:
     """
     return np.arccos(np.clip((np.trace(r1 @ r2.T) - 1) / 2, -1, 1))
 
-def depth2pcd(depth: np.ndarray, intrinsics:np.ndarray) -> np.ndarray:
-    '''
-    depth: (H, W)
-    intrinsics: (3, 3)
-    '''
-    height, width = depth.shape
-    v, u = np.meshgrid(
-        range(height), range(width),
-        indexing='ij'
-    ) # (H, W), (H, W)
-    u, v = u.flatten(), v.flatten() # (HW,), (HW,)
-    depth_flat = depth.flatten() # (HW,)
-    valid = depth_flat > 0 # (N,)
+def plan_move_qpos(begin_qpos, end_qpos, steps=50) -> np.ndarray:
+    delta_qpos = (end_qpos - begin_qpos) / steps
+    cur_qpos = begin_qpos.copy()
+    traj = []
 
-    u = u[valid] # (N,)
-    v = v[valid] # (N,)
-    depth_flat = depth_flat[valid] # (N,)
+    for _ in range(steps):
+        cur_qpos += delta_qpos
+        traj.append(cur_qpos.copy())
 
-    pixels = np.stack([u, v, np.ones_like(u)], axis=0) # (3, N)
-    rays = np.linalg.inv(intrinsics) @ pixels # (3, N)
-    points = rays * depth_flat[np.newaxis, :] # (3, N)
-    return points.T # (N, 3)
+    return np.array(traj)
+
+def execute_plan(env, plan):
+    """Execute the plan in the environment."""
+    for step in range(len(plan)):
+        env.step_env(
+            humanoid_action=plan[step],
+        )

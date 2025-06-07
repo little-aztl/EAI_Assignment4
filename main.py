@@ -13,6 +13,7 @@ from src.sim.wrapper_env import WrapperEnvConfig, WrapperEnv
 from src.sim.wrapper_env import get_grasps
 from src.test.load_test import load_test_data
 from src.obj_pose_est import estimate_obj_pose
+from src.utils import plan_move_qpos, execute_plan
 
 
 def detect_driller_pose(img, depth, camera_matrix, camera_pose, config:Config, *args, **kwargs):
@@ -168,22 +169,7 @@ def open_gripper(env: WrapperEnv, steps = 10):
 def close_gripper(env: WrapperEnv, steps = 10):
     for _ in range(steps):
         env.step_env(gripper_open=0)
-def plan_move_qpos(begin_qpos, end_qpos, steps=50) -> np.ndarray:
-    delta_qpos = (end_qpos - begin_qpos) / steps
-    cur_qpos = begin_qpos.copy()
-    traj = []
 
-    for _ in range(steps):
-        cur_qpos += delta_qpos
-        traj.append(cur_qpos.copy())
-
-    return np.array(traj)
-def execute_plan(env: WrapperEnv, plan):
-    """Execute the plan in the environment."""
-    for step in range(len(plan)):
-        env.step_env(
-            humanoid_action=plan[step],
-        )
 
 
 TESTING = True
